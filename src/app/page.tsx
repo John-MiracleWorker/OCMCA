@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, MessageSquare, Loader2, AlertCircle, Filter, XCircle, CalculatorIcon } from "lucide-react"; 
-import protocolsData from "@/lib/protocols.json";
+import protocolsData from "@/lib/protocols.json"; // Assuming this path is correct for your project setup
 import { MedicationCalculator } from "@/components/MedicationCalculator";
 import { useSearchParams, useRouter } from 'next/navigation';
 
@@ -22,7 +22,8 @@ interface Protocol {
 }
 
 interface ProtocolData {
-  [key: string]: Omit<Protocol, 'id' | 'categories'> & { categories?: string[] };
+  [key: string]: Omit<Protocol, 'id' | 'categories
+'> & { categories?: string[] };
 }
 
 const protocolsList: Protocol[] = Object.entries(protocolsData as ProtocolData).map(([key, protocol]) => ({
@@ -51,6 +52,11 @@ const CATEGORY_FILTERS = [
     { id: "trauma", label: "Trauma" },
 ];
 
+// Helper function to escape regex special characters
+const escapeRegExp = (string: string): string => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+};
+
 // Helper function to check for whole word boundaries
 const isWholeWord = (text: string, index: number, length: number): boolean => {
     const charBefore = index > 0 ? text[index - 1] : ' ';
@@ -61,38 +67,46 @@ const isWholeWord = (text: string, index: number, length: number): boolean => {
     return isStartBoundary && isEndBoundary;
 };
 
-// Updated linkifyContent function
+// Updated linkifyContent function V10
 const linkifyContent = (content: string | undefined, allProtocols: Protocol[], currentProtocolId: string): (string | JSX.Element)[] => {
-    console.log(`MANUS DEBUG V9: linkifyContent V9 (Revised Logic) CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
+    console.log(`MANUS DEBUG V10: linkifyContent V10 (Regex Matching) CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
     if (!content) return ["Content not available."];
 
     const potentialMatches: { index: number; length: number; id: string; title: string; originalMatch: string }[] = [];
-    const lowerContent = content.toLowerCase();
 
     allProtocols.forEach(refProtocol => {
         if (refProtocol.id === currentProtocolId || !refProtocol.name || refProtocol.name.trim() === "") return;
         
-        const lowerRefProtocolName = refProtocol.name.toLowerCase();
-        if (lowerRefProtocolName.length === 0) return;
+        const protocolNameFromJson = refProtocol.name.trim();
+        if (protocolNameFromJson.length === 0) return;
 
-        let searchIndex = 0;
-        while (searchIndex < lowerContent.length) {
-            const foundIndex = lowerContent.indexOf(lowerRefProtocolName, searchIndex);
-            if (foundIndex === -1) break;
+        const escapedProtocolName = escapeRegExp(protocolNameFromJson);
+        
+        // Regex to find the protocol name, optionally preceded by numbers/dots/spaces.
+        // It captures the full match (prefix + name) as group 0.
+        const matchRegex = new RegExp(`((?:\b(?:(?:\d+\.)*\d+|\d+)\s+)?${escapedProtocolName})`, "gi");
 
-            if (isWholeWord(content, foundIndex, refProtocol.name.length)) { 
+        let regexMatch;
+        while ((regexMatch = matchRegex.exec(content)) !== null) {
+            const originalMatchText = regexMatch[0]; 
+            const foundIndex = regexMatch.index;
+            const matchLength = originalMatchText.length;
+
+            if (isWholeWord(content, foundIndex, matchLength)) {
                 potentialMatches.push({
                     index: foundIndex,
-                    length: refProtocol.name.length, 
+                    length: matchLength,
                     id: refProtocol.id,
-                    title: refProtocol.name, 
-                    originalMatch: content.substring(foundIndex, foundIndex + refProtocol.name.length)
+                    title: protocolNameFromJson, // Canonical name from JSON
+                    originalMatch: originalMatchText // Full text matched in content
                 });
+            } else {
+                // console.log(`MANUS DEBUG V10: Not a whole word for regex match '${originalMatchText}' at index ${foundIndex}`);
             }
-            searchIndex = foundIndex + lowerRefProtocolName.length; 
         }
     });
 
+    // Sort potential matches: Longest first, then by start index for ties.
     potentialMatches.sort((a, b) => {
         if (a.length !== b.length) {
             return b.length - a.length; 
@@ -126,8 +140,11 @@ const linkifyContent = (content: string | undefined, allProtocols: Protocol[], c
         }
     }
     
+    // Sort final matches by their start index to render them in the correct order.
     finalMatches.sort((a, b) => a.index - b.index);
     
+    // console.log("MANUS DEBUG V10: linkifyContent - Final sorted & filtered matches:", finalMatches.map(m => ({title: m.title, index: m.index, length: m.length, original: m.originalMatch})));
+
     const result: (string | JSX.Element)[] = [];
     let lastIndex = 0;
     finalMatches.forEach(match => {
@@ -141,7 +158,7 @@ const linkifyContent = (content: string | undefined, allProtocols: Protocol[], c
                     href: { pathname: '/', query: { protocol: match.id } },
                     key: key,
                     className: "text-blue-600 hover:text-blue-800 underline",
-                    onClick: (e: any) => console.log(`MANUS DEBUG V9: Link clicked for protocol ID: ${match.id}, original text: '${match.originalMatch}'`)
+                    onClick: (e: any) => console.log(`MANUS DEBUG V10: Link clicked for protocol ID: ${match.id}, original text: '${match.originalMatch}'`)
                 },
                 match.originalMatch 
             )
@@ -168,17 +185,17 @@ function ProtocolNavigatorPageContent() {
   const router = useRouter();
   const [selectedProtocol, setSelectedProtocol] = useState<Protocol | null>(null);
 
-  console.log("MANUS DEBUG V8: ProtocolNavigatorPageContent rendering/re-rendering. SelectedProtocol ID:", selectedProtocol?.id); // Kept original debug from this component
+  console.log("MANUS DEBUG V8: ProtocolNavigatorPageContent rendering/re-rendering. SelectedProtocol ID:", selectedProtocol?.id);
 
   const { messages, input, handleInputChange: handleChatInputChange, handleSubmit, isLoading: isChatLoading, error: chatError } = useChat({
     api: "/api/chat",
   });
 
   const applyFiltersAndSearch = useCallback(() => {
-    console.log("MANUS DEBUG V8: applyFiltersAndSearch called. Term:", searchTerm, "Filters:", activeFilters); // Kept original debug
+    console.log("MANUS DEBUG V8: applyFiltersAndSearch called. Term:", searchTerm, "Filters:", activeFilters);
     const protocolIdFromQuery = searchParams.get('protocol');
     if (protocolIdFromQuery && !searchTerm && activeFilters.length === 0) {
-        console.log("MANUS DEBUG V8: applyFiltersAndSearch - bailing early due to protocolIdFromQuery and no search/filters"); // Kept original debug
+        console.log("MANUS DEBUG V8: applyFiltersAndSearch - bailing early due to protocolIdFromQuery and no search/filters");
         return; 
     }
 
@@ -191,7 +208,7 @@ function ProtocolNavigatorPageContent() {
     if (!searchTerm.trim()) {
       setSearchResults(filteredByCategories);
       setIsSearching(false);
-      console.log("MANUS DEBUG V8: applyFiltersAndSearch - no search term, set results to filteredByCategories"); // Kept original debug
+      console.log("MANUS DEBUG V8: applyFiltersAndSearch - no search term, set results to filteredByCategories");
       return;
     }
     setIsSearching(true);
@@ -200,18 +217,18 @@ function ProtocolNavigatorPageContent() {
     const finalResults = results.map(result => result.item);
     setSearchResults(finalResults);
     setIsSearching(false);
-    console.log("MANUS DEBUG V8: applyFiltersAndSearch - search complete, results count:", finalResults.length); // Kept original debug
+    console.log("MANUS DEBUG V8: applyFiltersAndSearch - search complete, results count:", finalResults.length);
   }, [searchTerm, activeFilters, searchParams]);
 
   useEffect(() => {
     const protocolIdFromQuery = searchParams.get('protocol');
-    console.log("MANUS DEBUG V8: useEffect[searchParams] - protocolIdFromQuery:", protocolIdFromQuery); // Kept original debug
+    console.log("MANUS DEBUG V8: useEffect[searchParams] - protocolIdFromQuery:", protocolIdFromQuery);
     if (protocolIdFromQuery) {
         const foundProtocol = protocolsList.find(p => p.id === protocolIdFromQuery);
-        console.log("MANUS DEBUG V8: useEffect[searchParams] - foundProtocol:", foundProtocol?.id); // Kept original debug
+        console.log("MANUS DEBUG V8: useEffect[searchParams] - foundProtocol:", foundProtocol?.id);
         if (foundProtocol) {
             if (selectedProtocol?.id !== foundProtocol.id) {
-                console.log("MANUS DEBUG V8: useEffect[searchParams] - Setting selected protocol to:", foundProtocol.id); // Kept original debug
+                console.log("MANUS DEBUG V8: useEffect[searchParams] - Setting selected protocol to:", foundProtocol.id);
                 setSelectedProtocol(foundProtocol);
             }
             setIsChatMode(false);
@@ -219,13 +236,13 @@ function ProtocolNavigatorPageContent() {
             if (searchTerm) setSearchTerm(""); 
             if (activeFilters.length > 0) setActiveFilters([]);
         } else {
-            console.warn("MANUS DEBUG V8: useEffect[searchParams] - Protocol ID from query not found, redirecting to home."); // Kept original debug
+            console.warn("MANUS DEBUG V8: useEffect[searchParams] - Protocol ID from query not found, redirecting to home.");
             setSelectedProtocol(null);
             router.push('/');
         }
     } else {
         if (selectedProtocol) {
-            console.log("MANUS DEBUG V8: useEffect[searchParams] - No protocolIdFromQuery, clearing selectedProtocol."); // Kept original debug
+            console.log("MANUS DEBUG V8: useEffect[searchParams] - No protocolIdFromQuery, clearing selectedProtocol.");
             setSelectedProtocol(null);
         }
         applyFiltersAndSearch();
@@ -235,7 +252,7 @@ function ProtocolNavigatorPageContent() {
   const handleSearchTermChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
     if (selectedProtocol) {
-        console.log("MANUS DEBUG V8: handleSearchTermChange - Clearing selected protocol due to search term change."); // Kept original debug
+        console.log("MANUS DEBUG V8: handleSearchTermChange - Clearing selected protocol due to search term change.");
         router.push('/'); 
         setSelectedProtocol(null); 
     }
@@ -243,7 +260,7 @@ function ProtocolNavigatorPageContent() {
 
   const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") { 
-        console.log("MANUS DEBUG V8: Enter key pressed in search."); // Kept original debug
+        console.log("MANUS DEBUG V8: Enter key pressed in search.");
     }
   };
 
@@ -254,7 +271,7 @@ function ProtocolNavigatorPageContent() {
             : [...prevFilters, filterId]
     );
     if (selectedProtocol) {
-        console.log("MANUS DEBUG V8: toggleFilter - Clearing selected protocol due to filter change."); // Kept original debug
+        console.log("MANUS DEBUG V8: toggleFilter - Clearing selected protocol due to filter change.");
         router.push('/'); 
         setSelectedProtocol(null);
     }
@@ -263,7 +280,7 @@ function ProtocolNavigatorPageContent() {
   const clearAllFilters = () => {
     setActiveFilters([]);
     if (selectedProtocol) {
-        console.log("MANUS DEBUG V8: clearAllFilters - Clearing selected protocol."); // Kept original debug
+        console.log("MANUS DEBUG V8: clearAllFilters - Clearing selected protocol.");
         router.push('/');
         setSelectedProtocol(null);
     }
@@ -277,14 +294,14 @@ function ProtocolNavigatorPageContent() {
 
   const renderProtocolContent = useCallback(() => {
     if (!selectedProtocol) return null;
-    console.log("MANUS DEBUG V8: renderProtocolContent - Rendering content for:", selectedProtocol.id); // Kept original debug
+    console.log("MANUS DEBUG V8: renderProtocolContent - Rendering content for:", selectedProtocol.id);
     try {
         return linkifyContent(selectedProtocol.content, protocolsList, selectedProtocol.id);
     } catch (error) {
-        console.error("MANUS DEBUG V8: Error in linkifyContent during render:", error); // Kept original debug
+        console.error("MANUS DEBUG V8: Error in linkifyContent during render:", error);
         return <div className="text-red-500">Error rendering protocol content. Please check console.</div>;
     }
-  }, [selectedProtocol]); // Removed protocolsList from dependency array as it's stable, linkifyContent will get it as arg
+  }, [selectedProtocol]);
 
   return (
     <div className="flex flex-col items-center min-h-screen bg-gray-100 p-4 md:p-8 font-sans">
@@ -440,9 +457,4 @@ export default function Page() {
         </Suspense>
     );
 }
-
-
-
-
-
 
