@@ -51,64 +51,57 @@ const CATEGORY_FILTERS = [
     { id: "trauma", label: "Trauma" },
 ];
 
-function escapeRegExp(inputString: string): string {
-  if (typeof inputString !== 'string') {
-    console.error("MANUS DEBUG: escapeRegExp received non-string input:", inputString);
-    return ""; 
-  }
-  // Normalize all newline types to \n, then replace literal newlines with the string "\\n" for RegExp constructor
-  let sanitizedString = inputString.replace(/\r\n|\r|\n/g, '\\n');
-
-  // Escape all standard RegExp special characters.
-  const escapedString = sanitizedString.replace(/[.*+?^${}()|[\\\]\/\\]/g, '\\$&'); // $& means the whole matched string
-
-  console.log(`MANUS DEBUG: escapeRegExp - Original: "${inputString}", Sanitized for newlines: "${sanitizedString}", Final Escaped: "${escapedString}"`);
-  return escapedString;
-}
+// Helper function to check for whole word boundaries
+const isWholeWord = (text: string, index: number, length: number): boolean => {
+    const charBefore = index > 0 ? text[index - 1] : ' ';
+    const charAfter = index + length < text.length ? text[index + length] : ' ';
+    const boundaryChars = /[^a-zA-Z0-9]/; // Matches any non-alphanumeric character
+    return boundaryChars.test(charBefore) && boundaryChars.test(charAfter);
+};
 
 const linkifyContent = (content: string | undefined, allProtocols: Protocol[], currentProtocolId: string): (string | JSX.Element)[] => {
-    console.log(`MANUS DEBUG: linkifyContent V5 CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
+    console.log(`MANUS DEBUG: linkifyContent V6 (String Search) CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
     if (!content) return ["Content not available."];
 
     const potentialMatches: { index: number; length: number; id: string; title: string; originalMatch: string }[] = [];
 
     allProtocols.forEach(refProtocol => {
-        if (refProtocol.id === currentProtocolId || !refProtocol.name) return;
-        
-        const escapedTitle = escapeRegExp(refProtocol.name);
-        if (!escapedTitle) return; // Skip if title becomes empty after escaping (should not happen with valid titles)
+        if (refProtocol.id === currentProtocolId || !refProtocol.name || refProtocol.name.trim() === "") return;
 
-        try {
-            const regex = new RegExp(`\\b(${escapedTitle})\\b`, "gi");
-            let match;
-            while ((match = regex.exec(content)) !== null) {
+        let searchIndex = 0;
+        while (searchIndex < content.length) {
+            const foundIndex = content.indexOf(refProtocol.name, searchIndex);
+            if (foundIndex === -1) break; // No more occurrences of this title
+
+            // Check for whole word boundaries
+            if (isWholeWord(content, foundIndex, refProtocol.name.length)) {
                 potentialMatches.push({
-                    index: match.index,
-                    length: match[0].length,
+                    index: foundIndex,
+                    length: refProtocol.name.length,
                     id: refProtocol.id,
-                    title: refProtocol.name, // Store original name for display or other uses
-                    originalMatch: match[0]
+                    title: refProtocol.name,
+                    originalMatch: refProtocol.name // The exact title string is the match
                 });
             }
-        } catch (e) {
-            console.error(`MANUS DEBUG: Error creating RegExp for title: "${refProtocol.name}", Escaped: "${escapedTitle}"`, e);
-            // Optionally, you could add the raw title as text if regex fails, or skip it
+            searchIndex = foundIndex + refProtocol.name.length; // Continue search after this match
         }
     });
 
+    // Sort matches: first by index, then by length (longer matches first to handle overlaps)
     potentialMatches.sort((a, b) => {
         if (a.index !== b.index) {
             return a.index - b.index;
         }
-        return b.length - a.length; // Prioritize longer matches at the same position
+        return b.length - a.length; // Prioritize longer matches at the same start index
     });
 
+    // Filter out overlapping matches, keeping the longest ones that appear first
     const finalMatches: typeof potentialMatches = [];
-    let currentPosition = 0;
+    let lastMatchEndPosition = -1;
     for (const match of potentialMatches) {
-        if (match.index >= currentPosition) {
+        if (match.index >= lastMatchEndPosition) {
             finalMatches.push(match);
-            currentPosition = match.index + match.length;
+            lastMatchEndPosition = match.index + match.length;
         }
     }
     
