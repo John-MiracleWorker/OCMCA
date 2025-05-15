@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback, Suspense } from "react"; // Added Suspense
+import React, { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Link from 'next/link';
 import { useChat } from "ai/react";
 import Fuse from 'fuse.js';
@@ -51,31 +51,58 @@ const CATEGORY_FILTERS = [
     { id: "trauma", label: "Trauma" },
 ];
 
-function escapeRegExp(string: string): string {
-  return string.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+function escapeRegExp(inputString: string): string {
+  if (typeof inputString !== 'string') {
+    console.error("MANUS DEBUG: escapeRegExp received non-string input:", inputString);
+    return ""; 
+  }
+  // Normalize all newline types to \n, then replace literal newlines with the string "\\n" for RegExp constructor
+  let sanitizedString = inputString.replace(/\r\n|\r|\n/g, '\\n');
+
+  // Escape all standard RegExp special characters.
+  const escapedString = sanitizedString.replace(/[.*+?^${}()|[\\\]\/\\]/g, '\\$&'); // $& means the whole matched string
+
+  console.log(`MANUS DEBUG: escapeRegExp - Original: "${inputString}", Sanitized for newlines: "${sanitizedString}", Final Escaped: "${escapedString}"`);
+  return escapedString;
 }
 
 const linkifyContent = (content: string | undefined, allProtocols: Protocol[], currentProtocolId: string): (string | JSX.Element)[] => {
+    console.log(`MANUS DEBUG: linkifyContent V5 CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
     if (!content) return ["Content not available."];
+
     const potentialMatches: { index: number; length: number; id: string; title: string; originalMatch: string }[] = [];
+
     allProtocols.forEach(refProtocol => {
         if (refProtocol.id === currentProtocolId || !refProtocol.name) return;
-        const regex = new RegExp(`\\b(${escapeRegExp(refProtocol.name)})\\b`, "gi");
-        let match;
-        while ((match = regex.exec(content)) !== null) {
-            potentialMatches.push({
-                index: match.index,
-                length: match[0].length,
-                id: refProtocol.id,
-                title: refProtocol.name,
-                originalMatch: match[0]
-            });
+        
+        const escapedTitle = escapeRegExp(refProtocol.name);
+        if (!escapedTitle) return; // Skip if title becomes empty after escaping (should not happen with valid titles)
+
+        try {
+            const regex = new RegExp(`\\b(${escapedTitle})\\b`, "gi");
+            let match;
+            while ((match = regex.exec(content)) !== null) {
+                potentialMatches.push({
+                    index: match.index,
+                    length: match[0].length,
+                    id: refProtocol.id,
+                    title: refProtocol.name, // Store original name for display or other uses
+                    originalMatch: match[0]
+                });
+            }
+        } catch (e) {
+            console.error(`MANUS DEBUG: Error creating RegExp for title: "${refProtocol.name}", Escaped: "${escapedTitle}"`, e);
+            // Optionally, you could add the raw title as text if regex fails, or skip it
         }
     });
+
     potentialMatches.sort((a, b) => {
-        if (a.index !== b.index) return a.index - b.index;
-        return b.length - a.length; 
+        if (a.index !== b.index) {
+            return a.index - b.index;
+        }
+        return b.length - a.length; // Prioritize longer matches at the same position
     });
+
     const finalMatches: typeof potentialMatches = [];
     let currentPosition = 0;
     for (const match of potentialMatches) {
@@ -84,6 +111,7 @@ const linkifyContent = (content: string | undefined, allProtocols: Protocol[], c
             currentPosition = match.index + match.length;
         }
     }
+    
     const result: (string | JSX.Element)[] = [];
     let lastIndex = 0;
     finalMatches.forEach(match => {
@@ -101,13 +129,14 @@ const linkifyContent = (content: string | undefined, allProtocols: Protocol[], c
         );
         lastIndex = match.index + match.length;
     });
+
     if (lastIndex < content.length) {
         result.push(content.substring(lastIndex));
     }
+
     return result.length > 0 ? result : [content];
 };
 
-// This component contains the main logic and uses client-side hooks
 function ProtocolNavigatorPageContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<Protocol[]>([]);
@@ -127,7 +156,8 @@ function ProtocolNavigatorPageContent() {
 
   const applyFiltersAndSearch = useCallback(() => {
     const protocolIdFromQuery = searchParams.get('protocol');
-    if (protocolIdFromQuery) return;
+    if (protocolIdFromQuery && !searchTerm && activeFilters.length === 0) return; 
+
     let filteredByCategories = protocolsList;
     if (activeFilters.length > 0) {
         filteredByCategories = protocolsList.filter(protocol => 
@@ -156,6 +186,7 @@ function ProtocolNavigatorPageContent() {
             setIsChatMode(false);
             setSearchResults([]); 
             setSearchTerm(""); 
+            setActiveFilters([]);
         } else {
             setSelectedProtocol(null);
             router.push('/');
@@ -168,11 +199,16 @@ function ProtocolNavigatorPageContent() {
 
   const handleSearchTermChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
-    if (selectedProtocol) router.push('/');
+    if (selectedProtocol) {
+        router.push('/'); // Clear selected protocol and query params if user starts typing
+        setSelectedProtocol(null); // Ensure UI updates immediately
+    }
   };
 
   const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") { /* Search is triggered by useEffect */ }
+    if (event.key === "Enter") { 
+        // applyFiltersAndSearch is called by useEffect when searchTerm changes
+    }
   };
 
   const toggleFilter = (filterId: string) => {
@@ -181,12 +217,18 @@ function ProtocolNavigatorPageContent() {
             ? prevFilters.filter(id => id !== filterId) 
             : [...prevFilters, filterId]
     );
-    if (selectedProtocol) router.push('/');
+    if (selectedProtocol) {
+        router.push('/'); 
+        setSelectedProtocol(null);
+    }
   };
 
   const clearAllFilters = () => {
     setActiveFilters([]);
-    if (selectedProtocol) router.push('/');
+    if (selectedProtocol) {
+        router.push('/');
+        setSelectedProtocol(null);
+    }
   };
 
   useEffect(() => {
@@ -195,7 +237,6 @@ function ProtocolNavigatorPageContent() {
     }
   }, [messages]);
 
-  // ... (Return JSX from the original Home component)
   return (
     <div className="flex flex-col items-center min-h-screen bg-gray-100 p-4 md:p-8 font-sans">
       <Card className="w-full max-w-4xl shadow-xl rounded-lg overflow-hidden">
@@ -219,7 +260,7 @@ function ProtocolNavigatorPageContent() {
                 onKeyDown={handleSearchKeyDown}
                 className="flex-grow border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm text-gray-900"
                 />
-                <Button variant="outline" onClick={() => { setIsChatMode(!isChatMode); if (selectedProtocol) router.push('/'); }} title={isChatMode ? "Switch to Search View" : "Switch to AI Chat"} className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-md">
+                <Button variant="outline" onClick={() => { setIsChatMode(!isChatMode); if (selectedProtocol) {router.push('/'); setSelectedProtocol(null);}}} title={isChatMode ? "Switch to Search View" : "Switch to AI Chat"} className="border-gray-300 text-gray-700 hover:bg-gray-50 rounded-md">
                 {isChatMode ? <Search className="h-5 w-5" /> : <MessageSquare className="h-5 w-5" />} <span className="ml-2 hidden sm:inline">{isChatMode ? "Search View" : "AI Chat"}</span>
                 </Button>
             </div>
@@ -290,7 +331,7 @@ function ProtocolNavigatorPageContent() {
                 </div>
                 ) : selectedProtocol ? (
                     <ScrollArea className="h-full border border-gray-300 rounded-md p-4 bg-gray-50 shadow-inner">
-                        <Button onClick={() => router.push('/')} className="mb-4 bg-blue-600 hover:bg-blue-700 text-white">Back to Search Results</Button>
+                        <Button onClick={() => {router.push('/'); setSelectedProtocol(null);}} className="mb-4 bg-blue-600 hover:bg-blue-700 text-white">Back to Search Results</Button>
                         <Card key={selectedProtocol.id} className="shadow-md rounded-lg overflow-hidden">
                             <CardHeader className="bg-gray-100 p-4 border-b border-gray-200">
                                 <CardTitle className="text-xl font-semibold text-blue-700">{selectedProtocol.name} <span className="text-sm text-gray-500 font-mono">({selectedProtocol.id})</span></CardTitle>
@@ -366,10 +407,9 @@ function ProtocolNavigatorPageContent() {
   );
 }
 
-// The default export is now a wrapper component that includes Suspense
 export default function HomePage() {
     return (
-        <Suspense fallback={<div>Loading protocols...</div>}> {/* Fallback UI */}
+        <Suspense fallback={<div className="flex justify-center items-center h-screen text-xl text-gray-700"><Loader2 className="h-8 w-8 animate-spin mr-3" />Loading protocols...</div>}> 
             <ProtocolNavigatorPageContent />
         </Suspense>
     );
