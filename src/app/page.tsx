@@ -40,7 +40,7 @@ const fuseOptions = {
     { name: 'id', weight: 0.5 },
     { name: 'content', weight: 0.2 }
   ]
-}; 
+};
 
 const fuse = new Fuse(protocolsList, fuseOptions);
 
