@@ -22,8 +22,7 @@ interface Protocol {
 }
 
 interface ProtocolData {
-  [key: string]: Omit<Protocol, 'id' | 'categories
-'> & { categories?: string[] };
+  [key: string]: Omit<Protocol, 'id' | 'categories'> & { categories?: string[] };
 }
 
 const protocolsList: Protocol[] = Object.entries(protocolsData as ProtocolData).map(([key, protocol]) => ({
@@ -457,4 +456,5 @@ export default function Page() {
         </Suspense>
     );
 }
+
 
