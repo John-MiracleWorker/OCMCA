@@ -51,61 +51,57 @@ const CATEGORY_FILTERS = [
     { id: "trauma", label: "Trauma" },
 ];
 
-// Helper function to escape regex special characters
-const escapeRegExp = (string: string): string => {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-};
-
-// Helper function to check for whole word boundaries
-const isWholeWord = (text: string, index: number, length: number): boolean => {
-    const charBefore = index > 0 ? text[index - 1] : ' ';
-    const charAfter = index + length < text.length ? text[index + length] : ' ';
-    const boundaryChars = /[^a-zA-Z0-9-]/; 
-    const isStartBoundary = index === 0 || boundaryChars.test(charBefore);
-    const isEndBoundary = (index + length === text.length) || boundaryChars.test(charAfter);
-    return isStartBoundary && isEndBoundary;
-};
-
-// Updated linkifyContent function V10
+// Updated linkifyContent function V11 - Focus on linking protocol numbers
 const linkifyContent = (content: string | undefined, allProtocols: Protocol[], currentProtocolId: string): (string | JSX.Element)[] => {
-    console.log(`MANUS DEBUG V10: linkifyContent V10 (Regex Matching) CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
+    console.log(`MANUS DEBUG V11: linkifyContent V11 (Number Linking) CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
     if (!content) return ["Content not available."];
 
     const potentialMatches: { index: number; length: number; id: string; title: string; originalMatch: string }[] = [];
+    const protocolNumberRegex = /\b(\d+(?:\.\d+)*)\b/g; // Matches numbers like 1.2, 22.34, 7, 1.2.3
 
-    allProtocols.forEach(refProtocol => {
-        if (refProtocol.id === currentProtocolId || !refProtocol.name || refProtocol.name.trim() === "") return;
-        
-        const protocolNameFromJson = refProtocol.name.trim();
-        if (protocolNameFromJson.length === 0) return;
+    let regexMatch;
+    while ((regexMatch = protocolNumberRegex.exec(content)) !== null) {
+        const matchedNumberStr = regexMatch[1]; // The actual number string, e.g., "2.2"
+        const foundIndex = regexMatch.index;
+        const matchLength = matchedNumberStr.length;
 
-        const escapedProtocolName = escapeRegExp(protocolNameFromJson);
-        
-        // Regex to find the protocol name, optionally preceded by numbers/dots/spaces.
-        // It captures the full match (prefix + name) as group 0.
-        const matchRegex = new RegExp(`((?:\b(?:(?:\d+\.)*\d+|\d+)\s+)?${escapedProtocolName})`, "gi");
+        let protocolToLink: Protocol | undefined = undefined;
+        let linkedId: string | undefined = undefined;
 
-        let regexMatch;
-        while ((regexMatch = matchRegex.exec(content)) !== null) {
-            const originalMatchText = regexMatch[0]; 
-            const foundIndex = regexMatch.index;
-            const matchLength = originalMatchText.length;
+        // 1. Try direct match with the number string (e.g., ID "1.10")
+        const directMatchProtocol = allProtocols.find(p => p.id === matchedNumberStr);
+        if (directMatchProtocol && directMatchProtocol.id !== currentProtocolId) {
+            protocolToLink = directMatchProtocol;
+            linkedId = directMatchProtocol.id;
+        }
 
-            if (isWholeWord(content, foundIndex, matchLength)) {
-                potentialMatches.push({
-                    index: foundIndex,
-                    length: matchLength,
-                    id: refProtocol.id,
-                    title: protocolNameFromJson, // Canonical name from JSON
-                    originalMatch: originalMatchText // Full text matched in content
-                });
-            } else {
-                // console.log(`MANUS DEBUG V10: Not a whole word for regex match '${originalMatchText}' at index ${foundIndex}`);
+        // 2. If no direct match, try converting dots to hyphens (e.g., "7.21" -> "7-21")
+        if (!protocolToLink) {
+            const convertedId = matchedNumberStr.replace(/\./g, '-');
+            const convertedMatchProtocol = allProtocols.find(p => p.id === convertedId);
+            if (convertedMatchProtocol && convertedMatchProtocol.id !== currentProtocolId) {
+                protocolToLink = convertedMatchProtocol;
+                linkedId = convertedMatchProtocol.id;
             }
         }
-    });
+        
+        if (protocolToLink && linkedId) {
+            // Check if this number is part of a larger protocol name that was already matched by a previous, longer (name-based) match if we were to combine strategies.
+            // For now, with number-only linking, this specific check might be less critical, but good to keep in mind for overlap resolution.
+            potentialMatches.push({
+                index: foundIndex,
+                length: matchLength,
+                id: linkedId, 
+                title: protocolToLink.name, // Store the actual protocol name for title or other uses
+                originalMatch: matchedNumberStr // This is the number string like "2.2"
+            });
+        } else {
+            // console.log(`MANUS DEBUG V11: No protocol found for number: ${matchedNumberStr} (direct or converted) or it's the current protocol.`);
+        }
+    }
 
-    // Sort potential matches: Longest first, then by start index for ties.
+    // Sort potential matches: Longest first (less relevant for numbers, but good for consistency), then by start index.
+    // For numbers, length is less variable, so index is primary sort for non-overlapping.
     potentialMatches.sort((a, b) => {
         if (a.length !== b.length) {
             return b.length - a.length; 
@@ -139,10 +135,9 @@ const linkifyContent = (content: string | undefined, allProtocols: Protocol[], c
         }
     }
     
-    // Sort final matches by their start index to render them in the correct order.
     finalMatches.sort((a, b) => a.index - b.index);
     
-    // console.log("MANUS DEBUG V10: linkifyContent - Final sorted & filtered matches:", finalMatches.map(m => ({title: m.title, index: m.index, length: m.length, original: m.originalMatch})));
+    // console.log("MANUS DEBUG V11: linkifyContent - Final sorted & filtered matches:", finalMatches.map(m => ({id: m.id, index: m.index, length: m.length, original: m.originalMatch})));
 
     const result: (string | JSX.Element)[] = [];
     let lastIndex = 0;
@@ -150,16 +145,17 @@ const linkifyContent = (content: string | undefined, allProtocols: Protocol[], c
         if (match.index > lastIndex) {
             result.push(content.substring(lastIndex, match.index));
         }
-        const key = `${match.id}-${match.index}-${match.originalMatch.substring(0, 20).replace(/\s+/g, '-')}`;
+        const key = `${match.id}-${match.index}-${match.originalMatch.replace(/\./g, '-')}`;
         result.push(
             React.createElement(Link,
                 { 
                     href: { pathname: '/', query: { protocol: match.id } },
                     key: key,
                     className: "text-blue-600 hover:text-blue-800 underline",
-                    onClick: (e: any) => console.log(`MANUS DEBUG V10: Link clicked for protocol ID: ${match.id}, original text: '${match.originalMatch}'`)
+                    title: `Go to Protocol: ${match.title} (ID: ${match.id})`, // Add a helpful title attribute
+                    onClick: (e: any) => console.log(`MANUS DEBUG V11: Link clicked for protocol ID: ${match.id}, linked text: '${match.originalMatch}'`)
                 },
-                match.originalMatch 
+                match.originalMatch // Link text is just the number, e.g., "2.2"
             )
         );
         lastIndex = match.index + match.length;
@@ -456,5 +452,6 @@ export default function Page() {
         </Suspense>
     );
 }
+
 
 
