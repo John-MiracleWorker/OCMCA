@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, Suspense } from "react
 import Link from 'next/link';
 import { useChat } from "ai/react";
 import Fuse from 'fuse.js';
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/ui/input"; 
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
