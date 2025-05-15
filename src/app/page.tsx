@@ -374,7 +374,7 @@ function ProtocolNavigatorPageContent() {
                 ) : selectedProtocol ? (
                     <ScrollArea className="h-full border border-gray-300 rounded-md p-4 bg-gray-50 shadow-inner">
                         <Button onClick={() => { console.log("MANUS DEBUG V8: Back to Search Results button clicked."); router.push('/'); setSelectedProtocol(null);}} className="mb-4 bg-blue-600 hover:bg-blue-700 text-white">Back to Search Results</Button>
-                        <Card key={selectedProtocol.id} className="shadow-md rounded-lg overflow-hidden">
+                        <Card key={selectedProtocol.id} className="shadow-md rounded-lg overflow-hidden bg-white"> {/* Added bg-white here */}
                             <CardHeader className="bg-gray-100 p-4 border-b border-gray-200">
                                 <CardTitle className="text-xl font-semibold text-blue-700">{selectedProtocol.name} <span className="text-sm text-gray-500 font-mono">({selectedProtocol.id})</span></CardTitle>
                                 <CardDescription className="text-xs text-gray-500">Source: {selectedProtocol.source_file}</CardDescription>
@@ -452,6 +452,7 @@ export default function ProtocolNavigatorPage() {
         </Suspense>
     );
 }
+
 
 
 
