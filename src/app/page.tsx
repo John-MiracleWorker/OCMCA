@@ -60,42 +60,44 @@ const isWholeWord = (text: string, index: number, length: number): boolean => {
 };
 
 const linkifyContent = (content: string | undefined, allProtocols: Protocol[], currentProtocolId: string): (string | JSX.Element)[] => {
-    console.log(`MANUS DEBUG: linkifyContent V6 (String Search) CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
+    console.log(`MANUS DEBUG: linkifyContent V7 (Case-Insensitive String Search) CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
     if (!content) return ["Content not available."];
 
     const potentialMatches: { index: number; length: number; id: string; title: string; originalMatch: string }[] = [];
+    const lowerContent = content.toLowerCase(); // For case-insensitive search
 
     allProtocols.forEach(refProtocol => {
         if (refProtocol.id === currentProtocolId || !refProtocol.name || refProtocol.name.trim() === "") return;
+        
+        const lowerRefProtocolName = refProtocol.name.toLowerCase();
+        if (lowerRefProtocolName.length === 0) return;
 
         let searchIndex = 0;
-        while (searchIndex < content.length) {
-            const foundIndex = content.indexOf(refProtocol.name, searchIndex);
+        while (searchIndex < lowerContent.length) {
+            const foundIndex = lowerContent.indexOf(lowerRefProtocolName, searchIndex);
             if (foundIndex === -1) break; // No more occurrences of this title
 
-            // Check for whole word boundaries
+            // Check for whole word boundaries on the original content string
             if (isWholeWord(content, foundIndex, refProtocol.name.length)) {
                 potentialMatches.push({
                     index: foundIndex,
-                    length: refProtocol.name.length,
+                    length: refProtocol.name.length, // Use original length for slicing
                     id: refProtocol.id,
-                    title: refProtocol.name,
-                    originalMatch: refProtocol.name // The exact title string is the match
+                    title: refProtocol.name, // Store original name
+                    originalMatch: content.substring(foundIndex, foundIndex + refProtocol.name.length) // Extract original casing from content
                 });
             }
-            searchIndex = foundIndex + refProtocol.name.length; // Continue search after this match
+            searchIndex = foundIndex + lowerRefProtocolName.length; // Continue search after this match
         }
     });
 
-    // Sort matches: first by index, then by length (longer matches first to handle overlaps)
     potentialMatches.sort((a, b) => {
         if (a.index !== b.index) {
             return a.index - b.index;
         }
-        return b.length - a.length; // Prioritize longer matches at the same start index
+        return b.length - a.length; 
     });
 
-    // Filter out overlapping matches, keeping the longest ones that appear first
     const finalMatches: typeof potentialMatches = [];
     let lastMatchEndPosition = -1;
     for (const match of potentialMatches) {
@@ -117,7 +119,7 @@ const linkifyContent = (content: string | undefined, allProtocols: Protocol[], c
                 key={`${match.id}-${match.index}`}
                 className="text-blue-600 hover:text-blue-800 underline"
             >
-                {match.originalMatch}
+                {match.originalMatch} 
             </Link>
         );
         lastIndex = match.index + match.length;
@@ -193,8 +195,8 @@ function ProtocolNavigatorPageContent() {
   const handleSearchTermChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
     if (selectedProtocol) {
-        router.push('/'); // Clear selected protocol and query params if user starts typing
-        setSelectedProtocol(null); // Ensure UI updates immediately
+        router.push('/'); 
+        setSelectedProtocol(null); 
     }
   };
 
@@ -407,4 +409,5 @@ export default function HomePage() {
         </Suspense>
     );
 }
+
 
