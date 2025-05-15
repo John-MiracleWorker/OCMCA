@@ -1,4 +1,4 @@
-"use client"; 
+"use client";
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Link from 'next/link';
@@ -55,36 +55,32 @@ const CATEGORY_FILTERS = [
 const isWholeWord = (text: string, index: number, length: number): boolean => {
     const charBefore = index > 0 ? text[index - 1] : ' ';
     const charAfter = index + length < text.length ? text[index + length] : ' ';
-    // Boundary chars: whitespace, punctuation (except hyphen within words), start/end of string
-    const boundaryChars = /[^a-zA-Z0-9-]/; // Allow hyphens within words
+    const boundaryChars = /[^a-zA-Z0-9-]/; 
     const isStartBoundary = index === 0 || boundaryChars.test(charBefore);
     const isEndBoundary = (index + length === text.length) || boundaryChars.test(charAfter);
-    // console.log(`MANUS DEBUG V8: isWholeWord check for text.substring(${index}, ${index + length})='${text.substring(index, index+length)}': charBefore='${charBefore}', charAfter='${charAfter}', isStartBoundary=${isStartBoundary}, isEndBoundary=${isEndBoundary}`);
     return isStartBoundary && isEndBoundary;
 };
 
+// Updated linkifyContent function
 const linkifyContent = (content: string | undefined, allProtocols: Protocol[], currentProtocolId: string): (string | JSX.Element)[] => {
-    console.log(`MANUS DEBUG V8: linkifyContent V8 (Enhanced Debug) CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
+    console.log(`MANUS DEBUG V9: linkifyContent V9 (Revised Logic) CALLED for protocol ID: ${currentProtocolId}, content snippet: ${content ? content.substring(0, 70) + "..." : "N/A"}`);
     if (!content) return ["Content not available."];
 
     const potentialMatches: { index: number; length: number; id: string; title: string; originalMatch: string }[] = [];
-    const lowerContent = content.toLowerCase(); // For case-insensitive search
+    const lowerContent = content.toLowerCase();
 
     allProtocols.forEach(refProtocol => {
         if (refProtocol.id === currentProtocolId || !refProtocol.name || refProtocol.name.trim() === "") return;
         
         const lowerRefProtocolName = refProtocol.name.toLowerCase();
         if (lowerRefProtocolName.length === 0) return;
-        // console.log(`MANUS DEBUG V8: linkifyContent - Checking for refProtocol: '${refProtocol.name}' (ID: ${refProtocol.id})`);
 
         let searchIndex = 0;
         while (searchIndex < lowerContent.length) {
             const foundIndex = lowerContent.indexOf(lowerRefProtocolName, searchIndex);
-            if (foundIndex === -1) break; // No more occurrences of this title
-            // console.log(`MANUS DEBUG V8: linkifyContent - Found potential match for '${refProtocol.name}' at index ${foundIndex} in content.`);
+            if (foundIndex === -1) break;
 
-            if (isWholeWord(content, foundIndex, refProtocol.name.length)) {
-                // console.log(`MANUS DEBUG V8: linkifyContent - Whole word match confirmed for '${refProtocol.name}' at index ${foundIndex}.`);
+            if (isWholeWord(content, foundIndex, refProtocol.name.length)) { 
                 potentialMatches.push({
                     index: foundIndex,
                     length: refProtocol.name.length, 
@@ -92,47 +88,63 @@ const linkifyContent = (content: string | undefined, allProtocols: Protocol[], c
                     title: refProtocol.name, 
                     originalMatch: content.substring(foundIndex, foundIndex + refProtocol.name.length)
                 });
-            } else {
-                // console.log(`MANUS DEBUG V8: linkifyContent - Not a whole word match for '${refProtocol.name}' at index ${foundIndex}.`);
             }
             searchIndex = foundIndex + lowerRefProtocolName.length; 
         }
     });
 
     potentialMatches.sort((a, b) => {
-        if (a.index !== b.index) {
-            return a.index - b.index;
+        if (a.length !== b.length) {
+            return b.length - a.length; 
         }
-        return b.length - a.length; 
+        return a.index - b.index; 
     });
 
     const finalMatches: typeof potentialMatches = [];
-    let lastMatchEndPosition = -1;
+    const coveredBitmap = new Array(content.length).fill(false); 
+
     for (const match of potentialMatches) {
-        if (match.index >= lastMatchEndPosition) {
+        let canAddMatch = true;
+        for (let i = match.index; i < match.index + match.length; i++) {
+            if (i >= content.length) { 
+                canAddMatch = false;
+                break;
+            }
+            if (coveredBitmap[i]) {
+                canAddMatch = false;
+                break;
+            }
+        }
+
+        if (canAddMatch) {
             finalMatches.push(match);
-            lastMatchEndPosition = match.index + match.length;
+            for (let i = match.index; i < match.index + match.length; i++) {
+                 if (i < content.length) { 
+                    coveredBitmap[i] = true;
+                 }
+            }
         }
     }
     
-    // console.log("MANUS DEBUG V8: linkifyContent - Final sorted & filtered matches:", finalMatches.map(m => ({title: m.title, index: m.index, original: m.originalMatch})));
-
+    finalMatches.sort((a, b) => a.index - b.index);
+    
     const result: (string | JSX.Element)[] = [];
     let lastIndex = 0;
     finalMatches.forEach(match => {
         if (match.index > lastIndex) {
             result.push(content.substring(lastIndex, match.index));
         }
-        // console.log(`MANUS DEBUG V8: linkifyContent - Creating link for: ${match.originalMatch} to ID ${match.id}`);
+        const key = `${match.id}-${match.index}-${match.originalMatch.substring(0, 20).replace(/\s+/g, '-')}`;
         result.push(
-            <Link
-                href={{ pathname: '/', query: { protocol: match.id } }}
-                key={`${match.id}-${match.index}-${Math.random()}`}
-                className="text-blue-600 hover:text-blue-800 underline"
-                onClick={(e) => console.log(`MANUS DEBUG V8: Link clicked for protocol ID: ${match.id}, original text: '${match.originalMatch}'`)}
-            >
-                {match.originalMatch} 
-            </Link>
+            React.createElement(Link,
+                { 
+                    href: { pathname: '/', query: { protocol: match.id } },
+                    key: key,
+                    className: "text-blue-600 hover:text-blue-800 underline",
+                    onClick: (e: any) => console.log(`MANUS DEBUG V9: Link clicked for protocol ID: ${match.id}, original text: '${match.originalMatch}'`)
+                },
+                match.originalMatch 
+            )
         );
         lastIndex = match.index + match.length;
     });
@@ -140,8 +152,7 @@ const linkifyContent = (content: string | undefined, allProtocols: Protocol[], c
     if (lastIndex < content.length) {
         result.push(content.substring(lastIndex));
     }
-    // console.log("MANUS DEBUG V8: linkifyContent - Final result segments count:", result.length);
-    return result.length > 0 ? result : [content]; // Ensure content is always returned even if no links
+    return result.length > 0 ? result : [content]; 
 };
 
 function ProtocolNavigatorPageContent() {
@@ -157,17 +168,17 @@ function ProtocolNavigatorPageContent() {
   const router = useRouter();
   const [selectedProtocol, setSelectedProtocol] = useState<Protocol | null>(null);
 
-  console.log("MANUS DEBUG V8: ProtocolNavigatorPageContent rendering/re-rendering. SelectedProtocol ID:", selectedProtocol?.id);
+  console.log("MANUS DEBUG V8: ProtocolNavigatorPageContent rendering/re-rendering. SelectedProtocol ID:", selectedProtocol?.id); // Kept original debug from this component
 
   const { messages, input, handleInputChange: handleChatInputChange, handleSubmit, isLoading: isChatLoading, error: chatError } = useChat({
     api: "/api/chat",
   });
 
   const applyFiltersAndSearch = useCallback(() => {
-    console.log("MANUS DEBUG V8: applyFiltersAndSearch called. Term:", searchTerm, "Filters:", activeFilters);
+    console.log("MANUS DEBUG V8: applyFiltersAndSearch called. Term:", searchTerm, "Filters:", activeFilters); // Kept original debug
     const protocolIdFromQuery = searchParams.get('protocol');
     if (protocolIdFromQuery && !searchTerm && activeFilters.length === 0) {
-        console.log("MANUS DEBUG V8: applyFiltersAndSearch - bailing early due to protocolIdFromQuery and no search/filters");
+        console.log("MANUS DEBUG V8: applyFiltersAndSearch - bailing early due to protocolIdFromQuery and no search/filters"); // Kept original debug
         return; 
     }
 
@@ -180,7 +191,7 @@ function ProtocolNavigatorPageContent() {
     if (!searchTerm.trim()) {
       setSearchResults(filteredByCategories);
       setIsSearching(false);
-      console.log("MANUS DEBUG V8: applyFiltersAndSearch - no search term, set results to filteredByCategories");
+      console.log("MANUS DEBUG V8: applyFiltersAndSearch - no search term, set results to filteredByCategories"); // Kept original debug
       return;
     }
     setIsSearching(true);
@@ -189,44 +200,42 @@ function ProtocolNavigatorPageContent() {
     const finalResults = results.map(result => result.item);
     setSearchResults(finalResults);
     setIsSearching(false);
-    console.log("MANUS DEBUG V8: applyFiltersAndSearch - search complete, results count:", finalResults.length);
+    console.log("MANUS DEBUG V8: applyFiltersAndSearch - search complete, results count:", finalResults.length); // Kept original debug
   }, [searchTerm, activeFilters, searchParams]);
 
   useEffect(() => {
     const protocolIdFromQuery = searchParams.get('protocol');
-    console.log("MANUS DEBUG V8: useEffect[searchParams] - protocolIdFromQuery:", protocolIdFromQuery);
+    console.log("MANUS DEBUG V8: useEffect[searchParams] - protocolIdFromQuery:", protocolIdFromQuery); // Kept original debug
     if (protocolIdFromQuery) {
         const foundProtocol = protocolsList.find(p => p.id === protocolIdFromQuery);
-        console.log("MANUS DEBUG V8: useEffect[searchParams] - foundProtocol:", foundProtocol?.id);
+        console.log("MANUS DEBUG V8: useEffect[searchParams] - foundProtocol:", foundProtocol?.id); // Kept original debug
         if (foundProtocol) {
             if (selectedProtocol?.id !== foundProtocol.id) {
-                console.log("MANUS DEBUG V8: useEffect[searchParams] - Setting selected protocol to:", foundProtocol.id);
+                console.log("MANUS DEBUG V8: useEffect[searchParams] - Setting selected protocol to:", foundProtocol.id); // Kept original debug
                 setSelectedProtocol(foundProtocol);
             }
             setIsChatMode(false);
-            // Only clear search results if we are actually navigating to a new protocol, not just re-rendering
             if (searchResults.length > 0) setSearchResults([]); 
             if (searchTerm) setSearchTerm(""); 
             if (activeFilters.length > 0) setActiveFilters([]);
         } else {
-            console.warn("MANUS DEBUG V8: useEffect[searchParams] - Protocol ID from query not found, redirecting to home.");
+            console.warn("MANUS DEBUG V8: useEffect[searchParams] - Protocol ID from query not found, redirecting to home."); // Kept original debug
             setSelectedProtocol(null);
             router.push('/');
         }
     } else {
-        // Only set selectedProtocol to null if it's currently set
         if (selectedProtocol) {
-            console.log("MANUS DEBUG V8: useEffect[searchParams] - No protocolIdFromQuery, clearing selectedProtocol.");
+            console.log("MANUS DEBUG V8: useEffect[searchParams] - No protocolIdFromQuery, clearing selectedProtocol."); // Kept original debug
             setSelectedProtocol(null);
         }
         applyFiltersAndSearch();
     }
-  }, [searchParams, router, applyFiltersAndSearch, selectedProtocol, searchTerm, searchResults.length, activeFilters.length]); // Added dependencies to try and stabilize
+  }, [searchParams, router, applyFiltersAndSearch, selectedProtocol, searchTerm, searchResults.length, activeFilters.length]);
 
   const handleSearchTermChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
     if (selectedProtocol) {
-        console.log("MANUS DEBUG V8: handleSearchTermChange - Clearing selected protocol due to search term change.");
+        console.log("MANUS DEBUG V8: handleSearchTermChange - Clearing selected protocol due to search term change."); // Kept original debug
         router.push('/'); 
         setSelectedProtocol(null); 
     }
@@ -234,8 +243,7 @@ function ProtocolNavigatorPageContent() {
 
   const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") { 
-        console.log("MANUS DEBUG V8: Enter key pressed in search.");
-        // applyFiltersAndSearch is called by useEffect when searchTerm changes
+        console.log("MANUS DEBUG V8: Enter key pressed in search."); // Kept original debug
     }
   };
 
@@ -246,7 +254,7 @@ function ProtocolNavigatorPageContent() {
             : [...prevFilters, filterId]
     );
     if (selectedProtocol) {
-        console.log("MANUS DEBUG V8: toggleFilter - Clearing selected protocol due to filter change.");
+        console.log("MANUS DEBUG V8: toggleFilter - Clearing selected protocol due to filter change."); // Kept original debug
         router.push('/'); 
         setSelectedProtocol(null);
     }
@@ -255,7 +263,7 @@ function ProtocolNavigatorPageContent() {
   const clearAllFilters = () => {
     setActiveFilters([]);
     if (selectedProtocol) {
-        console.log("MANUS DEBUG V8: clearAllFilters - Clearing selected protocol.");
+        console.log("MANUS DEBUG V8: clearAllFilters - Clearing selected protocol."); // Kept original debug
         router.push('/');
         setSelectedProtocol(null);
     }
@@ -267,17 +275,16 @@ function ProtocolNavigatorPageContent() {
     }
   }, [messages]);
 
-  // Render function for protocol content to ensure it's memoized if selectedProtocol doesn't change
   const renderProtocolContent = useCallback(() => {
     if (!selectedProtocol) return null;
-    console.log("MANUS DEBUG V8: renderProtocolContent - Rendering content for:", selectedProtocol.id);
+    console.log("MANUS DEBUG V8: renderProtocolContent - Rendering content for:", selectedProtocol.id); // Kept original debug
     try {
         return linkifyContent(selectedProtocol.content, protocolsList, selectedProtocol.id);
     } catch (error) {
-        console.error("MANUS DEBUG V8: Error in linkifyContent during render:", error);
+        console.error("MANUS DEBUG V8: Error in linkifyContent during render:", error); // Kept original debug
         return <div className="text-red-500">Error rendering protocol content. Please check console.</div>;
     }
-  }, [selectedProtocol]);
+  }, [selectedProtocol]); // Removed protocolsList from dependency array as it's stable, linkifyContent will get it as arg
 
   return (
     <div className="flex flex-col items-center min-h-screen bg-gray-100 p-4 md:p-8 font-sans">
@@ -323,135 +330,118 @@ function ProtocolNavigatorPageContent() {
                             </Button>
                         ))}
                         {activeFilters.length > 0 && (
-                            <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-xs text-red-500 hover:bg-red-50 rounded-full px-3 py-1">
-                                <XCircle className="h-3 w-3 mr-1"/> Clear All
+                            <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-xs text-red-500 hover:bg-red-100">
+                                <XCircle className="h-4 w-4 mr-1"/> Clear All
                             </Button>
                         )}
                     </div>
                 </div>
             )}
 
-            <div className="w-full h-[60vh] flex flex-col">
-                {isChatMode ? (
-                <div className="h-full flex flex-col border border-gray-300 rounded-md shadow-inner">
-                    <ScrollArea className="flex-grow p-4 bg-white" ref={chatContainerRef}>
-                        {messages.map((msg) => (
-                        <div key={msg.id} className={`mb-3 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                            <div className={`p-3 rounded-lg shadow-md max-w-[80%] ${msg.role === "user" ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800"}`}>
-                                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+            {isChatMode && (
+                <div className="mt-6">
+                    <h3 className="text-xl font-semibold mb-3 text-gray-800">AI Chat Assistant</h3>
+                    <ScrollArea className="h-[400px] w-full border border-gray-200 rounded-md p-4 bg-gray-50 mb-4" ref={chatContainerRef}>
+                        {messages.map((m, index) => (
+                            <div key={index} className={`mb-3 p-3 rounded-lg shadow-sm ${m.role === 'user' ? 'bg-blue-100 text-blue-800 ml-auto' : 'bg-gray-200 text-gray-800 mr-auto'} max-w-[85%]`}>
+                                <span className="font-semibold capitalize">{m.role === 'user' ? 'You' : 'AI'}: </span>
+                                {m.content}
                             </div>
-                        </div>
                         ))}
-                        {chatError && (
-                             <div className="flex justify-start mb-3">
-                                <div className="bg-red-100 text-red-700 p-3 rounded-lg shadow-md inline-flex items-center max-w-[80%]">
-                                    <AlertCircle className="inline-block h-4 w-4 mr-2 flex-shrink-0"/>
-                                    <p className="text-sm whitespace-pre-wrap">Sorry, an error occurred: {chatError.message}</p>
-                                </div>
+                        {isChatLoading && (
+                            <div className="flex items-center justify-center text-gray-500">
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                <span>Thinking...</span>
                             </div>
                         )}
-                        {isChatLoading && messages[messages.length -1]?.role === 'user' && (
-                            <div className="flex justify-start mb-3">
-                                <div className="bg-gray-200 text-gray-700 p-3 rounded-lg shadow-md inline-flex items-center">
-                                    <Loader2 className="h-4 w-4 animate-spin mr-2" /> Thinking...
-                                </div>
+                        {chatError && (
+                            <div className="text-red-500 p-3 bg-red-50 border border-red-200 rounded-md">
+                                <AlertCircle className="h-5 w-5 inline mr-2" /> Error: {chatError.message}
                             </div>
                         )}
                     </ScrollArea>
-                    <form onSubmit={handleSubmit} className="flex items-center space-x-2 p-3 border-t border-gray-200 bg-gray-50 rounded-b-md">
+                    <form onSubmit={handleSubmit} className="flex items-center space-x-2">
                         <Input
-                        placeholder="Ask the AI about protocols..."
-                        value={input}
-                        onChange={handleChatInputChange}
-                        disabled={isChatLoading}
-                        className="flex-grow border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm text-gray-900"
+                            value={input}
+                            onChange={handleChatInputChange}
+                            placeholder="Ask about protocols or medication..."
+                            className="flex-grow border-gray-300 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm text-gray-900"
+                            disabled={isChatLoading}
                         />
                         <Button type="submit" disabled={isChatLoading || !input.trim()} className="bg-blue-600 hover:bg-blue-700 text-white rounded-md">
-                        {isChatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
+                            {isChatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
                         </Button>
                     </form>
                 </div>
-                ) : selectedProtocol ? (
-                    <ScrollArea className="h-full border border-gray-300 rounded-md p-4 bg-gray-50 shadow-inner">
-                        <Button onClick={() => { console.log("MANUS DEBUG V8: Back to Search Results button clicked."); router.push('/'); setSelectedProtocol(null);}} className="mb-4 bg-blue-600 hover:bg-blue-700 text-white">Back to Search Results</Button>
-                        <Card key={selectedProtocol.id} className="shadow-md rounded-lg overflow-hidden bg-white"> {/* Added bg-white here */}
-                            <CardHeader className="bg-gray-100 p-4 border-b border-gray-200">
-                                <CardTitle className="text-xl font-semibold text-blue-700">{selectedProtocol.name} <span className="text-sm text-gray-500 font-mono">({selectedProtocol.id})</span></CardTitle>
-                                <CardDescription className="text-xs text-gray-500">Source: {selectedProtocol.source_file}</CardDescription>
-                                {selectedProtocol.categories && selectedProtocol.categories.length > 0 && (
-                                    <div className="mt-2">
-                                        {selectedProtocol.categories.map(cat => (
-                                            <span key={cat} className="inline-block bg-blue-100 text-blue-800 text-xs font-medium mr-2 px-2.5 py-0.5 rounded-full">
-                                                {cat}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                            </CardHeader>
-                            <CardContent className="p-4 md:p-6 text-gray-800 text-sm md:text-base leading-relaxed whitespace-pre-line">
-                                {renderProtocolContent()}
-                            </CardContent>
-                        </Card>
-                    </ScrollArea>
-                ) : (
-                    <ScrollArea className="h-full border border-gray-300 rounded-md p-1 bg-gray-50 shadow-inner">
-                        {isSearching ? (
-                        <div className="flex justify-center items-center h-full">
-                            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                            <p className="ml-2 text-gray-600">Searching...</p>
-                        </div>
-                        ) : searchResults.length > 0 ? (
-                        searchResults.map((protocol) => (
-                            <Card 
-                                key={protocol.id} 
-                                className="mb-3 shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer rounded-lg border border-gray-200"
-                                onClick={() => {
-                                    console.log("MANUS DEBUG V8: Search result card clicked for protocol ID:", protocol.id);
-                                    router.push(`/?protocol=${protocol.id}`);
-                                    // setSelectedProtocol(protocol); // This will be handled by useEffect
-                                }}
-                            >
+            )}
+
+            {!isChatMode && selectedProtocol && (
+                <div className="mt-6 prose max-w-none p-4 border border-gray-200 rounded-md bg-white shadow">
+                    <h2 className="text-2xl font-bold mb-3 text-gray-900">{selectedProtocol.name}</h2>
+                    <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                        {renderProtocolContent()}
+                    </div>
+                    <Button variant="outline" onClick={() => {setSelectedProtocol(null); router.push('/');}} className="mt-6 border-gray-300 text-gray-700 hover:bg-gray-50 rounded-md">
+                        Back to Search Results
+                    </Button>
+                </div>
+            )}
+
+            {!isChatMode && !selectedProtocol && searchResults.length > 0 && (
+                <ScrollArea className="mt-6 h-[500px] border border-gray-200 rounded-md p-1 bg-white shadow">
+                    <div className="p-3">
+                    {searchResults.map(protocol => (
+                        <Card 
+                            key={protocol.id} 
+                            className="mb-3 hover:shadow-md transition-shadow duration-200 cursor-pointer border-gray-200 hover:border-blue-400"
+                            onClick={() => router.push(`/?protocol=${protocol.id}`)}
+                        >
                             <CardHeader className="p-4">
-                                <CardTitle className="text-lg font-semibold text-blue-700 hover:text-blue-800">{protocol.name}</CardTitle>
-                                <CardDescription className="text-xs text-gray-500 font-mono mt-1">ID: {protocol.id} | Source: {protocol.source_file}</CardDescription>
+                                <CardTitle className="text-lg text-blue-700 hover:text-blue-800">{protocol.name}</CardTitle>
                                 {protocol.categories && protocol.categories.length > 0 && (
-                                    <div className="mt-2 flex flex-wrap gap-1">
-                                        {protocol.categories.map(cat => (
-                                            <span key={cat} className="inline-block bg-gray-100 text-gray-700 text-xs font-medium px-2 py-0.5 rounded-full border border-gray-300">
-                                                {cat}
-                                            </span>
-                                        ))}
+                                    <div className="text-xs text-gray-500 mt-1">
+                                        Categories: {protocol.categories.join(", ")}
                                     </div>
                                 )}
                             </CardHeader>
-                            </Card>
-                        ))
-                        ) : (
-                        <div className="flex justify-center items-center h-full">
-                            <p className="text-gray-500">No search results. Try different keywords or adjust filters.</p>
-                        </div>
-                        )}
-                    </ScrollArea>
-                )}
-            </div>
+                        </Card>
+                    ))}
+                    </div>
+                </ScrollArea>
+            )}
+            {!isChatMode && !selectedProtocol && searchTerm && searchResults.length === 0 && !isSearching && (
+                 <div className="mt-6 text-center text-gray-500 p-6 bg-gray-50 rounded-md border border-gray-200">
+                    <Search className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-lg font-medium">No protocols found matching "{searchTerm}".</p>
+                    <p className="text-sm">Try a different search term or adjust your filters.</p>
+                </div>
+            )}
+
         </CardContent>
       </Card>
       {isCalculatorOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <Suspense fallback={<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"><Loader2 className="h-8 w-8 text-white animate-spin" /></div>}>
             <MedicationCalculator onClose={() => setIsCalculatorOpen(false)} />
-        </div>
+        </Suspense>
       )}
+      <footer className="mt-12 text-center text-sm text-gray-500">
+        <p>&copy; {new Date().getFullYear()} Twin Township Ambulance. All rights reserved.</p>
+        <p className="text-xs mt-1">This tool is for reference only. Always follow local protocols and medical direction.</p>
+      </footer>
     </div>
   );
 }
 
-export default function ProtocolNavigatorPage() {
+// Main page export
+export default function Page() {
     return (
-        <Suspense fallback={<div className="flex justify-center items-center h-screen"><Loader2 className="h-12 w-12 animate-spin text-blue-600" /> <p className="ml-3 text-xl">Loading Protocols...</p></div>}>
+        <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-blue-500" /> Loading Protocols...</div>}>
             <ProtocolNavigatorPageContent />
         </Suspense>
     );
 }
+
+
 
 
 
